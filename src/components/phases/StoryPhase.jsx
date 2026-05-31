@@ -69,14 +69,16 @@ export default function StoryPhase({ storyPanel, audioEnabled, dispatch, onNext 
       </div>
 
       <div className="story-card">
-        {/* Illustrated placeholder */}
-        <div
-          className="story-image-placeholder"
-          style={{ background: panel.gradient }}
-        >
-          <span style={{ fontSize: 72 }}>{panel.emoji}</span>
-          {panel.emojiExtra && (
-            <span style={{ fontSize: 48, opacity: 0.7 }}>{panel.emojiExtra}</span>
+        <div className="story-media-frame" style={panel.image ? undefined : { background: panel.gradient }}>
+          {panel.image ? (
+            <img className="story-image" src={panel.image} alt={panel.title} />
+          ) : (
+            <div className="story-image-placeholder">
+              <span style={{ fontSize: 72 }}>{panel.emoji}</span>
+              {panel.emojiExtra && (
+                <span style={{ fontSize: 48, opacity: 0.7 }}>{panel.emojiExtra}</span>
+              )}
+            </div>
           )}
         </div>
 

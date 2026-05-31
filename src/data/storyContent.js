@@ -1,6 +1,7 @@
 export const storyPanels = [
   {
     id: 1,
+    image: '/assets/images/1.png',
     gradient: 'linear-gradient(135deg, #1e3a5f 0%, #0f2346 100%)',
     emoji: '🏫',
     emojiExtra: '📚',
@@ -12,6 +13,7 @@ export const storyPanels = [
   },
   {
     id: 2,
+    image: '/assets/images/2.png',
     gradient: 'linear-gradient(135deg, #3b1f2b 0%, #1a0f1e 100%)',
     emoji: '🛒',
     emojiExtra: '🍎',
@@ -23,6 +25,7 @@ export const storyPanels = [
   },
   {
     id: 3,
+    image: '/assets/images/3.png',
     gradient: 'linear-gradient(135deg, #1a3a2b 0%, #0f2017 100%)',
     emoji: '🧮',
     emojiExtra: '💡',
@@ -34,6 +37,7 @@ export const storyPanels = [
   },
   {
     id: 4,
+    image: '/assets/images/4.png',
     gradient: 'linear-gradient(135deg, #2d1b6b 0%, #140d3a 100%)',
     emoji: '🏆',
     emojiExtra: '🎊',
