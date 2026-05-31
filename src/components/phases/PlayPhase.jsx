@@ -109,6 +109,20 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
   const [options, setOptions]               = useState([]);
   const { play, stop } = useAudio(state.audioEnabled);
   const lastQuestionKey = useRef('');
+  const narrationRunId = useRef(0);
+
+  async function playNarration(text) {
+    const runId = ++narrationRunId.current;
+    stop();
+    const audio = await play(text);
+    if (!audio) return null;
+    if (runId !== narrationRunId.current) {
+      audio.pause();
+      audio.currentTime = 0;
+      return null;
+    }
+    return audio;
+  }
 
   // generate options when question changes
   const q = currentQuestions[currentQuestion];
@@ -121,13 +135,12 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
 
   function startWorld(worldId) {
     const questions = getWorldQuestions(worldId);
-    stop();
     lastQuestionKey.current = `${worldId}-0-${questions[0]?.text ?? ''}`;
-    play(questions[0]?.text);
     dispatch({ type: 'START_WORLD', worldId, questions });
     setSelectedOption(null);
     setHintVisible(false);
     setOptions([]);
+    void playNarration(questions[0]?.text);
   }
 
   function handleOption(opt) {
@@ -141,7 +154,7 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
     });
     const narration = feedbackNarration(correct);
     if (narration[0]) {
-      play(narration[0].text);
+      void playNarration(narration[0].text);
     }
   }
 
@@ -150,8 +163,13 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
     const key = `${activeWorld}-${currentQuestion}-${q.text}`;
     if (lastQuestionKey.current === key) return;
     lastQuestionKey.current = key;
-    play(q.text);
+    void playNarration(q.text);
   }, [activeWorld, currentQuestion, q?.text, play]);
+
+  useEffect(() => () => {
+    narrationRunId.current += 1;
+    stop();
+  }, [stop]);
 
   const handleContinue = useCallback(() => {
     setSelectedOption(null);

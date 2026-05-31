@@ -6,15 +6,23 @@ import { storyNarration } from '../../utils/narration.js';
 export default function StoryPhase({ storyPanel, audioEnabled, dispatch, onNext }) {
   const { play, stop } = useAudio(audioEnabled);
   const lastSpokenPanel = useRef(-1);
+  const narrationRunId = useRef(0);
   const panel = storyPanels[storyPanel];
   const total = storyPanels.length;
 
   async function speakPanel(nextIndex) {
+    const runId = ++narrationRunId.current;
     stop();
     const segments = storyNarration(nextIndex);
     for (const segment of segments) {
+      if (runId !== narrationRunId.current) return;
       const audio = await play(segment.text);
       if (!audio) return;
+      if (runId !== narrationRunId.current) {
+        audio.pause();
+        audio.currentTime = 0;
+        return;
+      }
       await new Promise(resolve => {
         const done = () => {
           audio.removeEventListener('ended', done);
@@ -32,6 +40,11 @@ export default function StoryPhase({ storyPanel, audioEnabled, dispatch, onNext 
     lastSpokenPanel.current = storyPanel;
     speakPanel(storyPanel);
   }, [audioEnabled, storyPanel]);
+
+  useEffect(() => () => {
+    narrationRunId.current += 1;
+    stop();
+  }, [stop]);
 
   function handleNext() {
     if (storyPanel < total - 1) {

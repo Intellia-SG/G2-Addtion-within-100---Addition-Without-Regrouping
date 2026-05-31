@@ -347,13 +347,21 @@ const STATIONS = [
 export default function SimulatePhase({ station, completedStations, audioEnabled, dispatch, onNext }) {
   const { play, stop } = useAudio(audioEnabled);
   const lastSpokenStation = useRef(-1);
+  const narrationRunId = useRef(0);
 
   async function speakStation(nextStation) {
+    const runId = ++narrationRunId.current;
     stop();
     const segments = simulateNarration(nextStation);
     for (const segment of segments) {
+      if (runId !== narrationRunId.current) return;
       const audio = await play(segment.text);
       if (!audio) return;
+      if (runId !== narrationRunId.current) {
+        audio.pause();
+        audio.currentTime = 0;
+        return;
+      }
       await new Promise(resolve => {
         const done = () => {
           audio.removeEventListener('ended', done);
@@ -371,6 +379,11 @@ export default function SimulatePhase({ station, completedStations, audioEnabled
     lastSpokenStation.current = station;
     speakStation(station);
   }, [audioEnabled, station]);
+
+  useEffect(() => () => {
+    narrationRunId.current += 1;
+    stop();
+  }, [stop]);
 
   function handleComplete() {
     dispatch({ type: 'COMPLETE_STATION', payload: station });

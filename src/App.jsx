@@ -9,8 +9,6 @@ import PlayPhase     from './components/phases/PlayPhase.jsx';
 import ReflectPhase  from './components/phases/ReflectPhase.jsx';
 import {
   wonderNarration,
-  storyNarration,
-  simulateNarration,
   reflectNarration,
 } from './utils/narration.js';
 
@@ -94,16 +92,23 @@ function PhaseNav({ phase, completedPhases, audioEnabled, dispatch }) {
 export default function App() {
   const [state, dispatch] = useGameState();
   const { play, stop } = useAudio(state.audioEnabled);
-  const lastNarrationKey = useRef('');
+  const narrationRunId = useRef(0);
 
   const { phase, completedPhases, storyPanel, station, completedStations, audioEnabled } = state;
 
   async function playNarrationQueue(segments) {
     if (!segments?.length) return;
+    const runId = ++narrationRunId.current;
     stop();
     for (const segment of segments) {
+      if (runId !== narrationRunId.current) return;
       const audio = await play(segment.text);
       if (!audio) return;
+      if (runId !== narrationRunId.current) {
+        audio.pause();
+        audio.currentTime = 0;
+        return;
+      }
       await new Promise(resolve => {
         const done = () => {
           audio.removeEventListener('ended', done);
@@ -122,25 +127,23 @@ export default function App() {
   }
 
   function handleStart() {
-    playNarrationQueue(wonderNarration());
+    void playNarrationQueue(wonderNarration());
     dispatch({ type: 'SET_PHASE', payload: PHASES.WONDER });
   }
 
   function handleWonderNext() {
-    playNarrationQueue(storyNarration(0));
     advanceTo(PHASES.STORY);
   }
 
   function handleStoryNext() {
-    playNarrationQueue(simulateNarration(0));
     advanceTo(PHASES.SIMULATE);
   }
 
   function handleSimNext()   { advanceTo(PHASES.PLAY); }
 
   function handleReflect() {
-    playNarrationQueue(reflectNarration());
     advanceTo(PHASES.REFLECT);
+    void playNarrationQueue(reflectNarration());
   }
 
   function handleRestart()   { dispatch({ type: 'RESET' }); }
