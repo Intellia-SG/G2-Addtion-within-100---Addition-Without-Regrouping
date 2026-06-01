@@ -4,63 +4,38 @@ import { useAudio } from '../../hooks/useAudio.js';
 import { storyNarration } from '../../utils/narration.js';
 
 export default function StoryPhase({ storyPanel, audioEnabled, dispatch, onNext }) {
-  const { play, stop } = useAudio(audioEnabled);
+  // playQueue uses the global singleton — any concurrent audio is cancelled
+  // automatically when a new queue starts.
+  const { playQueue, stop } = useAudio(audioEnabled);
   const lastSpokenPanel = useRef(-1);
-  const narrationRunId = useRef(0);
   const panel = storyPanels[storyPanel];
   const total = storyPanels.length;
 
-  async function speakPanel(nextIndex) {
-    const runId = ++narrationRunId.current;
-    stop();
-    const segments = storyNarration(nextIndex);
-    for (const segment of segments) {
-      if (runId !== narrationRunId.current) return;
-      const audio = await play(segment.text);
-      if (!audio) return;
-      if (runId !== narrationRunId.current) {
-        audio.pause();
-        audio.currentTime = 0;
-        return;
-      }
-      await new Promise(resolve => {
-        const done = () => {
-          audio.removeEventListener('ended', done);
-          audio.removeEventListener('error', done);
-          resolve();
-        };
-        audio.addEventListener('ended', done);
-        audio.addEventListener('error', done);
-      });
-    }
-  }
-
+  // Play narration whenever the panel changes (but only once per panel)
   useEffect(() => {
     if (!audioEnabled || lastSpokenPanel.current === storyPanel) return;
     lastSpokenPanel.current = storyPanel;
-    speakPanel(storyPanel);
-  }, [audioEnabled, storyPanel]);
-
-  useEffect(() => () => {
-    narrationRunId.current += 1;
-    stop();
-  }, [stop]);
+    playQueue(storyNarration(storyPanel));
+  }, [audioEnabled, storyPanel, playQueue]);
 
   function handleNext() {
     if (storyPanel < total - 1) {
-      lastSpokenPanel.current = storyPanel + 1;
-      speakPanel(storyPanel + 1);
-      dispatch({ type: 'SET_STORY_PANEL', payload: storyPanel + 1 });
+      const next = storyPanel + 1;
+      lastSpokenPanel.current = next;
+      playQueue(storyNarration(next));
+      dispatch({ type: 'SET_STORY_PANEL', payload: next });
     } else {
+      stop();  // silence before transitioning out
       onNext();
     }
   }
 
   function handleBack() {
     if (storyPanel > 0) {
-      lastSpokenPanel.current = storyPanel - 1;
-      speakPanel(storyPanel - 1);
-      dispatch({ type: 'SET_STORY_PANEL', payload: storyPanel - 1 });
+      const prev = storyPanel - 1;
+      lastSpokenPanel.current = prev;
+      playQueue(storyNarration(prev));
+      dispatch({ type: 'SET_STORY_PANEL', payload: prev });
     }
   }
 

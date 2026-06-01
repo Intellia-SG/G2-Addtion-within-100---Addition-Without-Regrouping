@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useGameState, PHASES } from './hooks/useGameState.js';
 import { useAudio } from './hooks/useAudio.js';
 import IntroScreen   from './components/IntroScreen.jsx';
@@ -21,10 +20,9 @@ const PHASE_DEFS = [
 ];
 
 function PhaseNav({ phase, completedPhases, audioEnabled, dispatch }) {
-  // Only show after intro
   if (phase === PHASES.INTRO) return null;
 
-  const phaseIndex = phase - 1; // 0-based for the 5 real phases
+  const phaseIndex = phase - 1;
 
   function handlePhaseSelect(phaseId, isLocked) {
     if (isLocked) return;
@@ -91,62 +89,54 @@ function PhaseNav({ phase, completedPhases, audioEnabled, dispatch }) {
 
 export default function App() {
   const [state, dispatch] = useGameState();
-  const { play, stop } = useAudio(state.audioEnabled);
-  const narrationRunId = useRef(0);
+  // Single shared audio hook — stop() here stops audio everywhere
+  const { playQueue, stop } = useAudio(state.audioEnabled);
 
   const { phase, completedPhases, storyPanel, station, completedStations, audioEnabled } = state;
-
-  async function playNarrationQueue(segments) {
-    if (!segments?.length) return;
-    const runId = ++narrationRunId.current;
-    stop();
-    for (const segment of segments) {
-      if (runId !== narrationRunId.current) return;
-      const audio = await play(segment.text);
-      if (!audio) return;
-      if (runId !== narrationRunId.current) {
-        audio.pause();
-        audio.currentTime = 0;
-        return;
-      }
-      await new Promise(resolve => {
-        const done = () => {
-          audio.removeEventListener('ended', done);
-          audio.removeEventListener('error', done);
-          resolve();
-        };
-        audio.addEventListener('ended', done);
-        audio.addEventListener('error', done);
-      });
-    }
-  }
 
   function advanceTo(next) {
     dispatch({ type: 'COMPLETE_PHASE', payload: phase });
     dispatch({ type: 'SET_PHASE', payload: next });
   }
 
+  // INTRO → WONDER
+  // WonderPhase has no internal audio; App owns it.
   function handleStart() {
-    void playNarrationQueue(wonderNarration());
+    stop(); // silence any lingering audio first
+    playQueue(wonderNarration());
     dispatch({ type: 'SET_PHASE', payload: PHASES.WONDER });
   }
 
+  // WONDER → STORY
+  // StoryPhase manages its own narration via useEffect — do NOT start
+  // narration here or the same audio will play twice simultaneously.
   function handleWonderNext() {
+    stop(); // cancel wonder narration before Story mounts
     advanceTo(PHASES.STORY);
   }
 
+  // STORY → SIMULATE
+  // SimulatePhase manages its own narration via useEffect — same rule.
   function handleStoryNext() {
+    stop(); // cancel story narration before Simulate mounts
     advanceTo(PHASES.SIMULATE);
   }
 
-  function handleSimNext()   { advanceTo(PHASES.PLAY); }
-
-  function handleReflect() {
-    advanceTo(PHASES.REFLECT);
-    void playNarrationQueue(reflectNarration());
+  // SIMULATE → PLAY
+  function handleSimNext() {
+    stop();
+    advanceTo(PHASES.PLAY);
   }
 
-  function handleRestart()   { dispatch({ type: 'RESET' }); }
+  // PLAY → REFLECT
+  // ReflectPhase has no internal audio; App owns it.
+  function handleReflect() {
+    stop(); // cancel any Play audio before Reflect narration starts
+    advanceTo(PHASES.REFLECT);
+    playQueue(reflectNarration());
+  }
+
+  function handleRestart() { dispatch({ type: 'RESET' }); }
 
   return (
     <div className="app">

@@ -107,69 +107,47 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
   const [selectedOption, setSelectedOption] = useState(null);
   const [hintVisible, setHintVisible]       = useState(false);
   const [options, setOptions]               = useState([]);
+
+  // play() from the global singleton — stops any concurrent audio automatically
   const { play, stop } = useAudio(state.audioEnabled);
   const lastQuestionKey = useRef('');
-  const narrationRunId = useRef(0);
 
-  async function playNarration(text) {
-    const runId = ++narrationRunId.current;
-    stop();
-    const audio = await play(text);
-    if (!audio) return null;
-    if (runId !== narrationRunId.current) {
-      audio.pause();
-      audio.currentTime = 0;
-      return null;
-    }
-    return audio;
-  }
-
-  // generate options when question changes
-  const q = currentQuestions[currentQuestion];
+  const q    = currentQuestions[currentQuestion];
   const qKey = activeWorld + '-' + currentQuestion;
 
-  // lazy-init options per question
   if (q && options.length === 0) {
     setOptions(makeOptions(q.answer));
   }
 
   function startWorld(worldId) {
     const questions = getWorldQuestions(worldId);
+    stop();
     lastQuestionKey.current = `${worldId}-0-${questions[0]?.text ?? ''}`;
+    play(questions[0]?.text);
     dispatch({ type: 'START_WORLD', worldId, questions });
     setSelectedOption(null);
     setHintVisible(false);
     setOptions([]);
-    void playNarration(questions[0]?.text);
   }
 
   function handleOption(opt) {
     if (feedbackVisible || selectedOption !== null) return;
     setSelectedOption(opt);
     const correct = opt === q.answer;
-    dispatch({
-      type: 'ANSWER_QUESTION',
-      correct,
-      explanation: q.explanation,
-    });
+    dispatch({ type: 'ANSWER_QUESTION', correct, explanation: q.explanation });
+    // play() stops the question narration then plays the feedback clip
     const narration = feedbackNarration(correct);
-    if (narration[0]) {
-      void playNarration(narration[0].text);
-    }
+    if (narration[0]) play(narration[0].text);
   }
 
+  // Narrate new questions as they appear
   useEffect(() => {
     if (!q?.text) return;
     const key = `${activeWorld}-${currentQuestion}-${q.text}`;
     if (lastQuestionKey.current === key) return;
     lastQuestionKey.current = key;
-    void playNarration(q.text);
+    play(q.text);
   }, [activeWorld, currentQuestion, q?.text, play]);
-
-  useEffect(() => () => {
-    narrationRunId.current += 1;
-    stop();
-  }, [stop]);
 
   const handleContinue = useCallback(() => {
     setSelectedOption(null);
@@ -232,9 +210,7 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
 
   if (!q) return null;
 
-  // re-gen options if cleared
   const displayOptions = options.length > 0 ? options : makeOptions(q.answer);
-
   const worldInfo = worlds.find(w => w.id === activeWorld);
   const totalQ = currentQuestions.length;
   const pct = Math.round(((currentQuestion) / totalQ) * 100);
@@ -250,12 +226,10 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
         />
       )}
 
-      {/* World name badge */}
       <div className="world-name-badge">
         {worldInfo?.icon} {worldInfo?.name}
       </div>
 
-      {/* HUD */}
       <div className="quiz-hud">
         <div className="hud-xp">⭐ {xp}</div>
         <div className="hud-lives">
@@ -268,7 +242,6 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
         <div className="hud-streak">🔥 {streak}x</div>
       </div>
 
-      {/* Progress */}
       <div className="quiz-progress-wrap">
         <div className="quiz-progress-header">
           <span>Question {currentQuestion + 1}/{totalQ}</span>
@@ -279,7 +252,6 @@ export default function PlayPhase({ state, dispatch, onFinish }) {
         </div>
       </div>
 
-      {/* Question card */}
       <div className="question-card">
         <div className="question-card-badge">
           {worldInfo?.icon} Question {currentQuestion + 1} of {totalQ}

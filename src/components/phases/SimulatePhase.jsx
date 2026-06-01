@@ -240,7 +240,7 @@ function ColumnAlgorithmStation({ onComplete }) {
     { a: 41, b: 25, answer: 66 },
     { a: 32, b: 55, answer: 87 },
   ];
-  const [idx, setIdx]       = useState(0);
+  const [idx, setIdx]        = useState(0);
   const [answers, setAnswers] = useState(['', '', '']);
   const [checked, setChecked] = useState(false);
 
@@ -345,54 +345,28 @@ const STATIONS = [
 ];
 
 export default function SimulatePhase({ station, completedStations, audioEnabled, dispatch, onNext }) {
-  const { play, stop } = useAudio(audioEnabled);
+  // playQueue uses the global singleton — switching stations cancels any
+  // in-flight narration automatically.
+  const { playQueue, stop } = useAudio(audioEnabled);
   const lastSpokenStation = useRef(-1);
-  const narrationRunId = useRef(0);
 
-  async function speakStation(nextStation) {
-    const runId = ++narrationRunId.current;
-    stop();
-    const segments = simulateNarration(nextStation);
-    for (const segment of segments) {
-      if (runId !== narrationRunId.current) return;
-      const audio = await play(segment.text);
-      if (!audio) return;
-      if (runId !== narrationRunId.current) {
-        audio.pause();
-        audio.currentTime = 0;
-        return;
-      }
-      await new Promise(resolve => {
-        const done = () => {
-          audio.removeEventListener('ended', done);
-          audio.removeEventListener('error', done);
-          resolve();
-        };
-        audio.addEventListener('ended', done);
-        audio.addEventListener('error', done);
-      });
-    }
-  }
-
+  // Narrate when the active station changes
   useEffect(() => {
     if (!audioEnabled || lastSpokenStation.current === station) return;
     lastSpokenStation.current = station;
-    speakStation(station);
-  }, [audioEnabled, station]);
+    playQueue(simulateNarration(station));
+  }, [audioEnabled, station, playQueue]);
 
-  useEffect(() => () => {
-    narrationRunId.current += 1;
-    stop();
-  }, [stop]);
+  function switchToStation(id) {
+    lastSpokenStation.current = id;
+    playQueue(simulateNarration(id));
+    dispatch({ type: 'SET_STATION', payload: id });
+  }
 
   function handleComplete() {
     dispatch({ type: 'COMPLETE_STATION', payload: station });
     if (station < STATIONS.length - 1) {
-      setTimeout(() => {
-        lastSpokenStation.current = station + 1;
-        speakStation(station + 1);
-        dispatch({ type: 'SET_STATION', payload: station + 1 });
-      }, 600);
+      setTimeout(() => switchToStation(station + 1), 600);
     }
   }
 
@@ -411,11 +385,7 @@ export default function SimulatePhase({ station, completedStations, audioEnabled
             type="button"
             key={s.id}
             className={`station-tab ${station === s.id ? 'active' : ''} ${completedStations.includes(s.id) ? 'done' : ''}`}
-            onClick={() => {
-              lastSpokenStation.current = s.id;
-              speakStation(s.id);
-              dispatch({ type: 'SET_STATION', payload: s.id });
-            }}
+            onClick={() => switchToStation(s.id)}
           >
             <span className="station-tab-badge">
               {completedStations.includes(s.id) ? '✓' : s.id + 1}
@@ -437,14 +407,14 @@ export default function SimulatePhase({ station, completedStations, audioEnabled
       </div>
 
       {allDone && (
-        <button className="simulate-next-btn" onClick={onNext}>
+        <button className="simulate-next-btn" onClick={() => { stop(); onNext(); }}>
           🏆 Go to Play! →
         </button>
       )}
 
       {!allDone && completedStations.includes(station) && station < 2 && (
         <button className="simulate-next-btn"
-          onClick={() => dispatch({ type: 'SET_STATION', payload: station + 1 })}>
+          onClick={() => switchToStation(station + 1)}>
           Next Station →
         </button>
       )}

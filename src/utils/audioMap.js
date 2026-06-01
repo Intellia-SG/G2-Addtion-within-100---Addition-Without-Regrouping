@@ -120,5 +120,13 @@ export const audioMap = {
   "What is 81 + 08?": "/assets/audio/audio_what_is_81_08__117.mp3",
   "A garden has 56 rose bushes and 33 sunflowers. How many plants?": "/assets/audio/audio_a_garden_has_56_rose_bushes_and_33_sunflowers_how__118.mp3",
   "What is 44 + 45?": "/assets/audio/audio_what_is_44_45__119.mp3",
-  "Ethan collected 60 shells and his friend collected 29. How many in total?": "/assets/audio/audio_ethan_collected_60_shells_and_his_friend_collected_120.mp3"
+  "Ethan collected 60 shells and his friend collected 29. How many in total?": "/assets/audio/audio_ethan_collected_60_shells_and_his_friend_collected_120.mp3",
+  "Ethan loves maths! One afternoon, his teacher Ms Parker said: \"Tomorrow we are going to Pasar Malam to learn about addition!\" Ethan was very excited. He wondered — how do you add two big numbers together?": "/assets/audio/audio_ethan_loves_maths_one_afternoon_his_teacher_ms_par_121.mp3",
+  "I love adding numbers! Let's go! 🎒": "/assets/audio/audio_i_love_adding_numbers_let_s_go__122.mp3",
+  "At Pasar Malam, the fruit seller had 23 mangoes on one side and 14 rambutans on the other. \"How many fruits do I have altogether?\" she asked. Ethan looked at the two groups of fruit — hmm, how do you add without mixing up the digits?": "/assets/audio/audio_at_pasar_malam_the_fruit_seller_had_23_mangoes_on__123.mp3",
+  "Hmm... how DO you add 23 and 14? 🤔": "/assets/audio/audio_hmm_how_do_you_add_23_and_14__124.mp3",
+  "Ethan remembered what Ms Parker taught: Add the TENS first, then add the ONES! For 23 + 14: the tens are 20 + 10 = 30, and the ones are 3 + 4 = 7. Put them together: 30 + 7 = 37! No carrying needed — it's addition without regrouping!": "/assets/audio/audio_ethan_remembered_what_ms_parker_taught_add_the_ten_125.mp3",
+  "Add tens first, then ones — easy peasy! 🎉": "/assets/audio/audio_add_tens_first_then_ones_easy_peasy__126.mp3",
+  "\"37 fruits!\" Ethan shouted proudly. The fruit seller smiled and gave him a mango as a prize. Ethan had learned the secret: when ones digits add up to 9 or less, and tens digits add up to 9 or less, you never need to regroup! Now he was ready to practise!": "/assets/audio/audio__37_fruits_ethan_shouted_proudly_the_fruit_seller__127.mp3",
+  "You're a superstar mathematician! 🌟": "/assets/audio/audio_you_re_a_superstar_mathematician__128.mp3"
 };

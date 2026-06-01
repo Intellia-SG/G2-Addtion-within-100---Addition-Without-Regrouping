@@ -12,6 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { pathToFileURL } from 'url';
 import { worlds } from '../src/data/questionBank.js';
+import { storyPanels } from '../src/data/storyContent.js';
 import {
   introNarration,
   wonderNarration,
@@ -50,6 +51,12 @@ function collectTextEntries() {
     for (const question of world.questions) {
       entries.push({ text: question.text, style: 'question' });
     }
+  }
+
+  // Include full story panel texts and mascot speeches so story narration is complete
+  for (const p of storyPanels) {
+    if (p.text) entries.push({ text: p.text, style: 'statement' });
+    if (p.mascotSpeech) entries.push({ text: p.mascotSpeech, style: 'statement' });
   }
 
   const seen = new Set();
