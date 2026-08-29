@@ -1,54 +1,130 @@
+// src/components/IntroScreen.jsx
 import React from 'react';
+import './IntroScreen.css';
+import { generateSessionQuestions } from '../utils/shuffle.js';
+import questionBank from '../data/questionBank.js';
 
-export default function IntroScreen({ onStart }) {
+const JOURNEY = [
+  { num: '01', icon: '🔍', label: 'Wonder',   desc: 'Spark your curiosity' },
+  { num: '02', icon: '📖', label: 'Story',    desc: 'Leo & Maya\'s market trip' },
+  { num: '03', icon: '🧪', label: 'Simulate', desc: '4 interactive math labs' },
+  { num: '04', icon: '🎮', label: 'Practice', desc: '10 worlds & boss battles' },
+  { num: '05', icon: '📓', label: 'Reflect',  desc: 'Review & scorecard' },
+];
+
+export default function IntroScreen({ state, dispatch }) {
+  const hasSaved = state?.phaseComplete && Object.values(state.phaseComplete).some(Boolean);
+
+  function startFresh() {
+    dispatch({ type: 'LOAD_QUESTIONS', payload: generateSessionQuestions(questionBank) });
+    dispatch({ type: 'SET_PHASE', payload: 'wonder' });
+  }
+
+  function resumeSession() {
+    dispatch({ type: 'SET_PHASE', payload: state.savedPhase || 'wonder' });
+  }
+
   return (
-    <div className="intro-screen">
-      <div className="intro-grade-badge">
-        ✦ MATHS · Grade 2
+    <div className="intro-wrap">
+      {/* Top Badge */}
+      <div className="intro-top-badge">
+        ✨ Curriculum · 2-Digit Addition without Regrouping · Grade 2 Math
       </div>
 
+      {/* Main Title */}
       <h1 className="intro-title">
-        Addition Without<br /><span>Regrouping</span>
+        <span className="text-orange">Addition</span> <span className="text-white">Quest</span>
       </h1>
+      <h2 className="intro-subtitle">AdditionQuest · Master 2-Digit Addition · Tens &amp; Ones without Regrouping</h2>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div className="intro-mascot">🐻</div>
-        <div className="intro-speech">
-          Ready to add numbers? Let's go! 🚀
+      {/* Mascot Row */}
+      <div className="intro-mascot-row">
+        <div className="intro-mascot-circle">🦊</div>
+        <div className="intro-speech-bubble">
+          Hi! I'm Addie the Math Fox. Ready to group tens,<br />count ones, and add big numbers together? ➕🧮
         </div>
       </div>
 
-      <p className="intro-subtitle">
-        Join Ethan on a journey to master addition within 100 through
-        stories, simulations, and fun games!
+      {/* Description */}
+      <p className="intro-desc">
+        Learn how to split numbers into tens and ones, add without regrouping, solve market stories, and conquer all 10 quest worlds like a Math Superstar!
       </p>
 
-      <div className="intro-phases-row">
-        {[
-          { icon: '❓', name: 'Wonder' },
-          { icon: '📖', name: 'Story' },
-          { icon: '🎮', name: 'Simulate' },
-          { icon: '🕹️', name: 'Play' },
-          { icon: '⭐', name: 'Reflect' },
-        ].map((p, i, arr) => (
-          <React.Fragment key={p.name}>
-            <div className="intro-phase-item">
-              <span className="intro-phase-icon">{p.icon}</span>
-              <span className="intro-phase-name">{p.name}</span>
-            </div>
-            {i < arr.length - 1 && <span className="intro-arrow">→</span>}
-          </React.Fragment>
-        ))}
+      {/* Journey Card */}
+      <div className="journey-card">
+        <div className="journey-card-title">YOUR LEARNING JOURNEY · CLICK ANY PHASE TO START</div>
+
+        <div className="journey-steps-container">
+          <div className="journey-row top-row">
+            {JOURNEY.slice(0, 3).map((j, i) => (
+              <React.Fragment key={j.num}>
+                <div
+                  className="journey-step-item clickable-step"
+                  onClick={() => dispatch({ type: 'SET_PHASE', payload: j.label.toLowerCase() === 'practice' ? 'play' : j.label.toLowerCase() })}
+                  role="button"
+                  tabIndex={0}
+                  title={`Click to open ${j.label} phase`}
+                >
+                  <span className="journey-icon-circle">{j.icon}</span>
+                  <div className="journey-text-col">
+                    <span className="journey-item-title">{j.label}</span>
+                    <span className="journey-item-desc">{j.desc}</span>
+                  </div>
+                </div>
+                <span className={`journey-arrow ${i === 2 ? 'fade-arrow' : ''}`}>→</span>
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="journey-row bottom-row">
+            {JOURNEY.slice(3, 5).map((j, i) => (
+              <React.Fragment key={j.num}>
+                <div
+                  className="journey-step-item clickable-step"
+                  onClick={() => dispatch({ type: 'SET_PHASE', payload: j.label.toLowerCase() === 'practice' ? 'play' : j.label.toLowerCase() })}
+                  role="button"
+                  tabIndex={0}
+                  title={`Click to open ${j.label} phase`}
+                >
+                  <span className="journey-icon-circle">{j.icon}</span>
+                  <div className="journey-text-col">
+                    <span className="journey-item-title">{j.label}</span>
+                    <span className="journey-item-desc">{j.desc}</span>
+                  </div>
+                </div>
+                {i === 0 && <span className="journey-arrow">→</span>}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
       </div>
 
-      <button className="intro-cta-btn" onClick={onStart}>
-        🚀 Begin Your Journey!
-      </button>
+      {/* Actions */}
+      <div className="intro-ctas">
+        <button className="btn btn-primary btn-lg intro-cta-main" onClick={startFresh}>
+          🚀 Begin Your Journey!
+        </button>
+        {hasSaved && (
+          <button className="btn btn-outline" onClick={resumeSession} style={{ marginTop: '10px' }}>
+            ↩ Resume Session
+          </button>
+        )}
+      </div>
 
-      <div className="intro-badges">
-        <span className="intro-feature-badge">🔢 Place Value</span>
-        <span className="intro-feature-badge">📊 Simulations</span>
-        <span className="intro-feature-badge">🎯 100 Questions</span>
+      {/* Bottom Cards */}
+      <div className="intro-bottom-cards">
+        <div className="bottom-card">
+          <div className="bottom-card-icon" style={{ color: '#ff6b6b' }}>🎯</div>
+          <div>100 Questions</div>
+        </div>
+        <div className="bottom-card">
+          <div className="bottom-card-icon" style={{ color: '#feca57' }}>🧮</div>
+          <div>Tens &amp; Ones</div>
+        </div>
+        <div className="bottom-card">
+          <div className="bottom-card-icon" style={{ color: '#66bb6a' }}>✨</div>
+          <div>Badges &amp; XP</div>
+        </div>
       </div>
     </div>
   );

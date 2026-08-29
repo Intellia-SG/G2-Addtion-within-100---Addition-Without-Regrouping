@@ -1,53 +1,55 @@
-import { useCallback } from 'react';
+// src/hooks/useAudio.js
+// Audio Engine supporting static asset lookup, ElevenLabs dynamic fallback, and Web Audio SFX
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Global singleton audio engine.
-//
-// ALL hook instances share the same _activeAudio and _activeAbort so that
-// calling stop() or play() from *any* component immediately silences whatever
-// is currently playing — even if it was started by a different component or
-// phase.  This prevents the "multiple voices at once" bug that occurs when
-// phases overlap during transitions.
-//
-// Audio sources: pre-generated static MP3s via audioMap → ElevenLabs dynamic
-// generation (requires VITE_ELEVENLABS_API_KEY).  No Web Speech API fallback.
-// ─────────────────────────────────────────────────────────────────────────────
+import { useRef, useCallback, useEffect } from 'react';
+import { audioMap } from '../utils/audioMap.js';
 
-const VOICE_ID = 'Xb7hH8MSUJpSbSDYk0k2'; // Alice – Clear Educator
-const MODEL    = 'eleven_multilingual_v2';
+const VOICE_SETTINGS = {
+  celebration:  { stability: 0.12, similarity_boost: 0.45, style: 0.75, use_speaker_boost: true },
+  encouragement:{ stability: 0.16, similarity_boost: 0.50, style: 0.65, use_speaker_boost: true },
+  question:     { stability: 0.20, similarity_boost: 0.55, style: 0.55, use_speaker_boost: true },
+  emphasis:     { stability: 0.16, similarity_boost: 0.50, style: 0.60, use_speaker_boost: true },
+  thinking:     { stability: 0.24, similarity_boost: 0.60, style: 0.35, use_speaker_boost: true },
+  statement:    { stability: 0.20, similarity_boost: 0.55, style: 0.50, use_speaker_boost: true },
+  instruction:  { stability: 0.20, similarity_boost: 0.55, style: 0.50, use_speaker_boost: true },
+};
 
-let _activeAudio = null;   // The single playing HTMLAudioElement
-let _activeAbort = null;   // AbortController for any in-flight queue
-const _urlCache  = new Map();
+const VOICE_ID = 'Xb7hH8MSUJpSbSDYk0k2'; // Alice — Clear, Engaging Educator
+const MODEL_ID = 'eleven_multilingual_v2';
+const blobCache = new Map();
 
-/** Stop everything immediately and cancel any queued narration. */
-function _stopAll() {
-  if (_activeAbort) {
-    _activeAbort.abort();
-    _activeAbort = null;
-  }
-  if (_activeAudio) {
-    _activeAudio.pause();
-    _activeAudio.currentTime = 0;
-    _activeAudio = null;
-  }
-}
+export function useAudio(audioEnabled = true) {
+  const currentAudioRef = useRef(null);
+  const playingRef      = useRef(false);
+  const narrateIdRef    = useRef(0);
 
-async function _getUrl(text, apiKey) {
-  // 1. Static pre-generated MP3 (audioMap)
-  try {
-    const { audioMap } = await import('../utils/audioMap.js');
-    if (audioMap[text]) return audioMap[text];
-  } catch { /* audioMap not available – skip */ }
+  const stopAll = useCallback(() => {
+    narrateIdRef.current++;
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    playingRef.current = false;
+  }, []);
 
-  // 2. Dynamic ElevenLabs generation
-  if (!apiKey) return null;
-  if (_urlCache.has(text)) return _urlCache.get(text);
+  useEffect(() => {
+    if (!audioEnabled) {
+      stopAll();
+    }
+  }, [audioEnabled, stopAll]);
 
-  try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
-      {
+  const getAudioUrl = useCallback(async (text, style = 'statement') => {
+    if (audioMap && audioMap[text]) return audioMap[text];
+
+    const cacheKey = `${text}__${style}`;
+    if (blobCache.has(cacheKey)) return blobCache.get(cacheKey);
+
+    const apiKey = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_ELEVENLABS_API_KEY : null;
+    if (!apiKey) return null;
+
+    try {
+      const settings = VOICE_SETTINGS[style] || VOICE_SETTINGS.statement;
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
         method: 'POST',
         headers: {
           'xi-api-key': apiKey,
@@ -55,108 +57,98 @@ async function _getUrl(text, apiKey) {
         },
         body: JSON.stringify({
           text,
-          model_id: MODEL,
-          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3 },
+          model_id: MODEL_ID,
+          voice_settings: settings,
         }),
-      }
-    );
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    _urlCache.set(text, url);
-    return url;
-  } catch {
-    return null;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-export function useAudio(enabled) {
-  const apiKey = import.meta.env?.VITE_ELEVENLABS_API_KEY ?? null;
-
-  /**
-   * Play a single text clip.
-   * Stops whatever is currently playing globally, then starts this clip.
-   * Returns the Audio element so callers can await its 'ended' event if needed.
-   */
-  const play = useCallback(async (text) => {
-    if (!enabled || !text) return null;
-
-    const url = await _getUrl(text, apiKey);
-    if (!url) return null;
-
-    _stopAll();
-
-    const audio = new Audio(url);
-    _activeAudio = audio;
-    audio.play().catch(() => {});
-    return audio;
-  }, [enabled, apiKey]);
-
-  /**
-   * Play an ordered array of narration segments sequentially.
-   * Each segment is { text } (or a plain string).
-   * The entire queue is cancelled the moment stop() or play() is called,
-   * or when a new playQueue() call begins.
-   */
-  const playQueue = useCallback(async (segments) => {
-    if (!enabled || !segments?.length) return;
-
-    // Cancel any previously running queue and silence current audio
-    _stopAll();
-
-    const ctrl = new AbortController();
-    _activeAbort = ctrl;
-
-    for (const segment of segments) {
-      if (ctrl.signal.aborted) return;
-
-      const text = segment?.text ?? segment;
-      const url  = await _getUrl(text, apiKey);
-
-      if (!url || ctrl.signal.aborted) return;
-
-      // A concurrent play() call could have replaced _activeAudio between
-      // the async _getUrl call above and here — stop it cleanly.
-      if (_activeAudio) {
-        _activeAudio.pause();
-        _activeAudio = null;
-      }
-
-      const audio = new Audio(url);
-      _activeAudio = audio;
-
-      try {
-        await audio.play();
-      } catch {
-        return; // Autoplay blocked — give up gracefully
-      }
-
-      // Wait for the clip to finish, or bail out if cancelled
-      await new Promise(resolve => {
-        const finish = () => {
-          audio.removeEventListener('ended', finish);
-          audio.removeEventListener('error', finish);
-          resolve();
-        };
-        audio.addEventListener('ended', finish);
-        audio.addEventListener('error', finish);
-
-        // Immediately resolve when the queue is aborted
-        ctrl.signal.addEventListener('abort', () => {
-          audio.pause();
-          audio.removeEventListener('ended', finish);
-          audio.removeEventListener('error', finish);
-          resolve();
-        }, { once: true });
       });
+      if (!res.ok) throw new Error(`ElevenLabs ${res.status}`);
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      blobCache.set(cacheKey, url);
+      return url;
+    } catch (err) {
+      console.warn('[Audio Engine] ElevenLabs dynamic request skipped:', err.message);
+      return null;
     }
+  }, []);
 
-    if (_activeAbort === ctrl) _activeAbort = null;
-  }, [enabled, apiKey]);
+  const playSegment = useCallback(async (text, style, expectedId) => {
+    if (!audioEnabled || narrateIdRef.current !== expectedId) return;
+    const url = await getAudioUrl(text, style);
+    if (!url || narrateIdRef.current !== expectedId) return;
 
-  /** Stop all audio immediately (shared across every component). */
-  const stop = useCallback(() => _stopAll(), []);
+    return new Promise((resolve) => {
+      const audio = new Audio(url);
+      currentAudioRef.current = audio;
+      audio.onended = () => { currentAudioRef.current = null; resolve(); };
+      audio.onerror = () => { currentAudioRef.current = null; resolve(); };
+      audio.play().catch(() => resolve());
+    });
+  }, [audioEnabled, getAudioUrl]);
 
-  return { play, playQueue, stop };
+  const narrate = useCallback(async (segments) => {
+    if (!segments || !segments.length) return;
+    stopAll();
+    const currentId = ++narrateIdRef.current;
+    playingRef.current = true;
+
+    for (const seg of segments) {
+      if (narrateIdRef.current !== currentId) break;
+      await playSegment(seg.text, seg.style, currentId);
+      if (narrateIdRef.current !== currentId) break;
+      await new Promise(r => setTimeout(r, 180));
+    }
+    if (narrateIdRef.current === currentId) {
+      playingRef.current = false;
+    }
+  }, [stopAll, playSegment]);
+
+  // Tone-based sound synthesizer for instant zero-latency feedback
+  const playTone = useCallback((frequencies, durations) => {
+    if (!audioEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      let offset = 0;
+      frequencies.forEach((freq, i) => {
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.22, ctx.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + (durations[i] || 150) / 1000 + 0.2);
+        osc.start(ctx.currentTime + offset);
+        osc.stop(ctx.currentTime + offset + (durations[i] || 150) / 1000 + 0.2);
+        offset += (durations[i] || 150) / 1000;
+      });
+    } catch { /* ignore WebAudio errors */ }
+  }, [audioEnabled]);
+
+  const sounds = {
+    correct: () => playTone([880, 1100, 1320], [100, 100, 180]),
+    wrong:   () => playTone([220, 180], [180, 200]),
+    badge:   () => playTone([523, 659, 784, 1047], [90, 90, 90, 240]),
+    streak:  () => playTone([440, 880, 1100], [70, 70, 180]),
+    levelUp: () => playTone([523, 659, 784, 1047, 1319], [60, 60, 60, 60, 250]),
+    click:   () => playTone([440], [50]),
+    defeat:  () => playTone([300, 240, 180], [120, 120, 250]),
+  };
+
+  return {
+    narrate,
+    stopAll,
+    sounds,
+    say:       (text) => ({ text, style: 'statement' }),
+    ask:       (text) => ({ text, style: 'question' }),
+    cheer:     (text) => ({ text, style: 'celebration' }),
+    emphasize: (text) => ({ text, style: 'emphasis' }),
+    think:     (text) => ({ text, style: 'thinking' }),
+    celebrate: (text) => ({ text, style: 'celebration' }),
+    instruct:  (text) => ({ text, style: 'instruction' }),
+    encourage: (text) => ({ text, style: 'encouragement' }),
+  };
 }
+
+export default useAudio;

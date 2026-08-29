@@ -1,105 +1,145 @@
-import { useEffect, useRef } from 'react';
-import { storyPanels } from '../../data/storyContent.js';
+// src/components/phases/StoryPhase.jsx
+import React, { useEffect, useState } from 'react';
+import './StoryPhase.css';
+import { STORY_PANELS } from '../../data/storyContent.js';
 import { useAudio } from '../../hooks/useAudio.js';
 import { storyNarration } from '../../utils/narration.js';
 
-export default function StoryPhase({ storyPanel, audioEnabled, dispatch, onNext }) {
-  // playQueue uses the global singleton — any concurrent audio is cancelled
-  // automatically when a new queue starts.
-  const { playQueue, stop } = useAudio(audioEnabled);
-  const lastSpokenPanel = useRef(-1);
-  const panel = storyPanels[storyPanel];
-  const total = storyPanels.length;
+const STORY_IMAGE_PATHS = [
+  '/assets/images/1.jpg',
+  '/assets/images/2.jpg',
+  '/assets/images/3.jpg',
+  '/assets/images/4.jpg',
+];
 
-  // Play narration whenever the panel changes (but only once per panel)
+function StoryImage({ panel }) {
+  const [imgError, setImgError] = useState(false);
+  const imageSrc = STORY_IMAGE_PATHS[panel.panel] || STORY_IMAGE_PATHS[0];
+
   useEffect(() => {
-    if (!audioEnabled || lastSpokenPanel.current === storyPanel) return;
-    lastSpokenPanel.current = storyPanel;
-    playQueue(storyNarration(storyPanel));
-  }, [audioEnabled, storyPanel, playQueue]);
+    setImgError(false);
+  }, [panel.panel]);
+
+  return (
+    <div className="story-image-container">
+      {!imgError && imageSrc ? (
+        <img
+          key={panel.panel}
+          src={imageSrc}
+          alt={panel.title}
+          onError={() => setImgError(true)}
+          className="story-full-img"
+        />
+      ) : (
+        <div className="story-img-fallback" style={{ background: panel.imageBg }}>
+          <span className="fallback-emoji">{panel.imageEmoji}</span>
+          <span className="fallback-title">{panel.title}</span>
+          <span className="fallback-highlight">{panel.highlight}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function StoryPhase({ state, dispatch }) {
+  const panel = STORY_PANELS[state?.storyPanel || 0] || STORY_PANELS[0];
+  const { narrate, stopAll } = useAudio(state?.audioEnabled ?? true);
+  const totalPanels = STORY_PANELS.length;
+  const isLastPanel = (state?.storyPanel || 0) >= totalPanels - 1;
+
+  useEffect(() => {
+    stopAll();
+    const timer = setTimeout(() => narrate(storyNarration(state?.storyPanel || 0)), 300);
+    return () => { clearTimeout(timer); stopAll(); };
+  }, [state?.storyPanel, narrate, stopAll]);
 
   function handleNext() {
-    if (storyPanel < total - 1) {
-      const next = storyPanel + 1;
-      lastSpokenPanel.current = next;
-      playQueue(storyNarration(next));
-      dispatch({ type: 'SET_STORY_PANEL', payload: next });
-    } else {
-      stop();  // silence before transitioning out
-      onNext();
-    }
+    stopAll();
+    dispatch({ type: 'NEXT_STORY_PANEL' });
   }
 
-  function handleBack() {
-    if (storyPanel > 0) {
-      const prev = storyPanel - 1;
-      lastSpokenPanel.current = prev;
-      playQueue(storyNarration(prev));
-      dispatch({ type: 'SET_STORY_PANEL', payload: prev });
-    }
+  function handlePrev() {
+    stopAll();
+    dispatch({ type: 'PREV_STORY_PANEL' });
   }
 
   return (
-    <div className="story-phase">
-      {/* Progress bar */}
-      <div style={{ width: '100%', maxWidth: 680, padding: '10px 0 0' }}>
-        <div className="progress-bar-wrap">
-          <div
-            className="progress-bar-fill"
-            style={{ width: `${((storyPanel + 1) / total) * 100}%` }}
-          />
+    <div className="story-wrap">
+      <div className="story-container anim-slide-up" key={state?.storyPanel || 0}>
+        {/* Top Progress Bar Row */}
+        <div className="story-progress-bar-row">
+          <div className="story-track">
+            <div
+              className="story-fill"
+              style={{ width: `${(((state?.storyPanel || 0) + 1) / totalPanels) * 100}%` }}
+            />
+          </div>
+          <span className="story-counter-text">{(state?.storyPanel || 0) + 1} / {totalPanels}</span>
         </div>
-      </div>
 
-      <div className="story-header">
-        <span />
-        <span className="story-panel-count">{storyPanel + 1} / {total}</span>
-      </div>
+        {/* Main Horizontal Story Card */}
+        <div className="story-main-card">
+          {/* Left: Complete Image in full original frame */}
+          <div className="story-image-section">
+            <StoryImage panel={panel} />
+          </div>
 
-      <div className="story-card">
-        <div className="story-media-frame" style={panel.image ? undefined : { background: panel.gradient }}>
-          {panel.image ? (
-            <img className="story-image" src={panel.image} alt={panel.title} />
-          ) : (
-            <div className="story-image-placeholder">
-              <span style={{ fontSize: 72 }}>{panel.emoji}</span>
-              {panel.emojiExtra && (
-                <span style={{ fontSize: 48, opacity: 0.7 }}>{panel.emojiExtra}</span>
-              )}
+          {/* Right: Story Content */}
+          <div className="story-content-section">
+            <h2 className="story-title">{panel.title}</h2>
+            <p className="story-text">{panel.text}</p>
+
+            {panel.highlight && (
+              <div className="story-prompt-pill">
+                <span className="prompt-icon">💡</span>
+                <span className="prompt-text">{panel.highlight}</span>
+              </div>
+            )}
+
+            {/* Character Badge */}
+            <div className="story-character-badge">
+              <div className="character-avatar-circle">
+                <span className="character-emoji">{panel.characterEmoji || '👦'}</span>
+              </div>
+              <span className="character-name">{panel.character || 'Leo'}</span>
             </div>
-          )}
-        </div>
-
-        <div className="story-body">
-          <h2 className="story-title">{panel.title}</h2>
-          <p className="story-text">{panel.text}</p>
-          <div className="story-highlight-box">{panel.highlight}</div>
-          <div className="story-mascot-row">
-            <div className="mascot-avatar">🐻</div>
-            <div className="mascot-bubble">{panel.mascotSpeech}</div>
           </div>
         </div>
-      </div>
 
-      {/* Sticky bottom nav */}
-      <div className="story-nav">
-        <button className="story-back-btn" onClick={handleBack} disabled={storyPanel === 0}
-          style={{ opacity: storyPanel === 0 ? 0.35 : 1 }}>
-          ← Back
-        </button>
+        {/* Bottom Bar: Centered Dots + Action Buttons */}
+        <div className="story-footer-nav">
+          <div className="story-dots-center">
+            {STORY_PANELS.map((_, i) => (
+              <span
+                key={i}
+                className={`story-nav-dot ${i === (state?.storyPanel || 0) ? 'active' : ''} ${i < (state?.storyPanel || 0) ? 'done' : ''}`}
+              />
+            ))}
+          </div>
 
-        <div className="story-dots">
-          {storyPanels.map((_, i) => (
-            <div
-              key={i}
-              className={`story-dot ${i === storyPanel ? 'active' : i < storyPanel ? 'completed' : ''}`}
-            />
-          ))}
+          <div className="story-nav-actions">
+            {(state?.storyPanel || 0) > 0 && (
+              <button
+                type="button"
+                id="story-prev-btn"
+                className="btn btn-outline btn-sm story-prev-btn"
+                onClick={handlePrev}
+                aria-label="Previous story"
+              >
+                ← Back
+              </button>
+            )}
+            <button
+              type="button"
+              id="story-next-btn"
+              className="btn btn-primary btn-sm story-next-btn"
+              onClick={handleNext}
+              aria-label={isLastPanel ? 'Start Simulating' : 'Next story'}
+            >
+              {!isLastPanel ? 'Next →' : 'Simulate! 🧪'}
+            </button>
+          </div>
         </div>
-
-        <button className="story-next-btn" onClick={handleNext}>
-          {storyPanel < total - 1 ? 'Next →' : 'Go to Simulate →'}
-        </button>
       </div>
     </div>
   );

@@ -1,40 +1,76 @@
-export default function WonderPhase({ onNext }) {
+// src/components/phases/WonderPhase.jsx
+import React, { useEffect } from 'react';
+import './WonderPhase.css';
+import Mascot from '../shared/Mascot.jsx';
+import { useAudio } from '../../hooks/useAudio.js';
+import { wonderNarration } from '../../utils/narration.js';
+
+const PARTICLES = ['➕', '🔟', '1️⃣', '🧮', '⭐', '🏆', '🎯', '💡', '🦊', '✨'];
+
+export default function WonderPhase({ state, dispatch }) {
+  const { narrate, stopAll } = useAudio(state?.audioEnabled ?? true);
+
+  useEffect(() => {
+    const segs = wonderNarration();
+    narrate(segs);
+    return () => stopAll();
+  }, [narrate, stopAll]);
+
+  function handleInvestigate() {
+    stopAll();
+    dispatch({ type: 'COMPLETE_PHASE', payload: 'wonder' });
+    dispatch({ type: 'SET_PHASE', payload: 'story' });
+  }
+
   return (
-    <div className="wonder-phase">
-      <div className="wonder-card">
-        <span className="wonder-emoji">🤔</span>
-        <h2 className="wonder-title">Here's Something to Wonder About…</h2>
-        <p className="wonder-text">
-          Emma was collecting stickers. She had <strong>23 animal stickers</strong> and
-          then got <strong>14 space stickers</strong> as a birthday gift.
-        </p>
-
-        <div className="wonder-problem-box">
-          <p>
-            Emma wants to put ALL her stickers into one album.
-            She needs to know: <strong>how many stickers does she have altogether?</strong>
-          </p>
-          <span className="wonder-question-highlight">
-            🤩 23 + 14 = ???
+    <div className="wonder-wrap">
+      {/* Floating particles */}
+      <div className="wonder-particles" aria-hidden="true">
+        {PARTICLES.map((p, i) => (
+          <span
+            key={i}
+            className="wonder-particle"
+            style={{
+              left: `${5 + (i * 9.5) % 90}%`,
+              top: `${5 + (i * 7.5) % 80}%`,
+              animationDelay: `${i * 0.6}s`,
+              fontSize: `${1.1 + (i % 3) * 0.4}rem`,
+            }}
+          >
+            {p}
           </span>
-        </div>
-
-        <p className="wonder-text">
-          Hmm… We have two <em>two-digit</em> numbers. How can we add them without getting confused?
-          Do we need to "carry" anything? Or is there an easier way?
-        </p>
-
-        <div className="wonder-mascot-row">
-          <div className="mascot-avatar">🐻</div>
-          <div className="mascot-bubble">
-            Ooh! I wonder if we can split them into tens and ones… 🧠
-          </div>
-        </div>
+        ))}
       </div>
 
-      <button className="wonder-btn" onClick={onNext}>
-        Let's Find Out! →
-      </button>
+      <div className="wonder-content anim-slide-up">
+        {/* Main hook card */}
+        <div className="wonder-card glass-card">
+          <div className="wonder-stadium-icon" aria-hidden="true">🧮</div>
+          <h1 className="wonder-title headline">The Big Addition Mystery!</h1>
+
+          <div className="wonder-number-display">
+            <span className="number-display wonder-num">23 + 14 ➔ 20 + 10 = 30 ➔ 3 + 4 = 7 ➔ 37!</span>
+          </div>
+
+          <div className="wonder-question-card">
+            <p className="body-text wonder-q">
+              If Leo has <strong className="wonder-em">23 sweet mangoes</strong> in one crate, and Maya has <strong className="wonder-em">14 crisp apples</strong> in another crate…
+            </p>
+            <p className="body-text wonder-q">
+              How many fresh fruits do they have altogether, and how can we add them easily using <span className="wonder-highlight">tens and ones</span> without mixing up the digits?
+            </p>
+          </div>
+
+          {/* Mascot */}
+          <div className="wonder-mascot-row">
+            <Mascot mood="curious" message="Let's investigate how tens and ones combine without regrouping!" size="sm" />
+          </div>
+
+          <button className="btn btn-primary btn-lg wonder-cta" onClick={handleInvestigate}>
+            Start Investigation 🔍
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

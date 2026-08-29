@@ -1,0 +1,117 @@
+/* src/components/phases/WonderPhase.css */
+.wonder-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.wonder-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.wonder-particle {
+  position: absolute;
+  animation: wonderFloat 4s ease-in-out infinite alternate;
+  opacity: 0.16;
+  user-select: none;
+}
+
+.wonder-content {
+  width: 100%;
+  max-width: 760px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+}
+
+.wonder-card {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.wonder-stadium-icon {
+  font-size: 3rem;
+  line-height: 1;
+}
+
+.wonder-title {
+  color: #ffffff;
+  margin: 0;
+  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.wonder-number-display {
+  background: rgba(15, 12, 40, 0.65);
+  padding: 10px 20px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(251, 176, 59, 0.4);
+  box-shadow: 0 0 20px rgba(251, 176, 59, 0.2);
+  max-width: 100%;
+}
+
+.wonder-num {
+  font-size: clamp(1.1rem, 2.2vw, 1.6rem) !important;
+  color: #fcd34d;
+}
+
+.wonder-question-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wonder-q {
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.wonder-em {
+  color: #fcd34d;
+  font-weight: 800;
+}
+
+.wonder-highlight {
+  color: #4ade80;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.wonder-mascot-row {
+  margin-top: 4px;
+}
+
+.wonder-cta {
+  font-size: 1.25rem;
+  padding: 14px 38px;
+  margin-top: 6px;
+}
+
+@media (max-width: 600px) {
+  .wonder-card {
+    padding: 20px 16px;
+    gap: 12px;
+  }
+  .wonder-stadium-icon {
+    font-size: 2.4rem;
+  }
+}

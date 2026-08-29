@@ -1,0 +1,195 @@
+/* src/components/phases/PlayPhase.css */
+.play-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 16px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ─── Compact Top Bar: Topic Badge + HUD ─────────────────────────────────── */
+.play-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 680px;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+
+.play-topic-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topic-name {
+  font-family: var(--font-display);
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topic-icon {
+  font-size: 1.15rem;
+}
+
+.topic-mini-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  color: #fcd34d;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.topic-mini-btn:hover {
+  background: rgba(251, 176, 59, 0.2);
+  border-color: #fbb03b;
+  transform: translateY(-1px);
+}
+
+.play-hud-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-pill-mini {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.hud-pill-mini.q-num {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+/* ─── Question Progress Line ────────────────────────────────────────────── */
+.play-progress-line {
+  width: 100%;
+  max-width: 680px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.play-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b 0%, #22c55e 100%);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.play-question-area {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* ─── Kingdom Map Wrap ──────────────────────────────────────────────────── */
+.play-map-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.play-map-card {
+  width: 100%;
+  max-width: 780px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-sizing: border-box;
+}
+
+.play-map-title {
+  color: #ffffff;
+  margin: 0;
+}
+
+/* ─── Done Screen ────────────────────────────────────────────────────────── */
+.play-done-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  width: 100%;
+}
+
+.play-done-card {
+  width: 100%;
+  max-width: 520px;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+}
+
+.play-done-icon {
+  font-size: 3.8rem;
+  line-height: 1;
+}
+
+.play-done-title {
+  color: #fcd34d;
+  margin: 0;
+}
+
+.play-done-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.stat-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.play-done-cta {
+  font-size: 1.25rem;
+  padding: 14px 36px;
+  margin-top: 8px;
+}

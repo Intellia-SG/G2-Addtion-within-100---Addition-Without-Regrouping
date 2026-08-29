@@ -1,31 +1,27 @@
-import { useEffect } from 'react';
+// src/components/shared/FeedbackOverlay.jsx
+import React from 'react';
+import './FeedbackOverlay.css';
 
-export default function FeedbackOverlay({ correct, explanation, xpGained, onContinue }) {
-  useEffect(() => {
-    const t = setTimeout(onContinue, 2200);
-    return () => clearTimeout(t);
-  }, [onContinue]);
-
+export default function FeedbackOverlay({ isCorrect, explanation, onContinue }) {
   return (
-    <>
-      {xpGained > 0 && (
-        <div className="xp-gained-badge">+{xpGained} XP</div>
-      )}
-
-      <div className="feedback-overlay" onClick={onContinue}>
-        <div className={`feedback-card ${correct ? 'correct' : 'wrong'}`}>
-          <span className="feedback-emoji">
-            {correct ? '🎉' : '😢'}
-          </span>
-          <h3 className="feedback-title">
-            {correct ? 'Correct! 🎊' : 'Not quite!'}
-          </h3>
-          <p className="feedback-explanation">{explanation}</p>
-          <button className="feedback-continue-btn">
-            {correct ? 'Keep Going! →' : 'Try Next →'}
-          </button>
+    <div className="feedback-backdrop" onClick={onContinue}>
+      <div className={`feedback-card glass-card ${isCorrect ? 'correct anim-bounce-in' : 'incorrect anim-shake'}`} onClick={(e) => e.stopPropagation()}>
+        <div className="feedback-icon-circle">
+          {isCorrect ? '🎉' : '💡'}
         </div>
+
+        <h3 className="feedback-title">
+          {isCorrect ? 'Super Job! Correct!' : 'Not Quite!'}
+        </h3>
+
+        {explanation && (
+          <p className="feedback-explanation">{explanation}</p>
+        )}
+
+        <button className={`btn ${isCorrect ? 'btn-green' : 'btn-primary'} feedback-btn`} onClick={onContinue}>
+          {isCorrect ? 'Keep Going! 🚀' : 'Got it! Next →'}
+        </button>
       </div>
-    </>
+    </div>
   );
 }

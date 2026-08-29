@@ -1,291 +1,298 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { worlds, getWorldQuestions } from '../../data/questionBank.js';
-import { shuffle } from '../../utils/shuffle.js';
+// src/components/phases/PlayPhase.jsx
+import React, { useState, useEffect, useRef } from 'react';
+import './PlayPhase.css';
+import KingdomMap from '../gamification/KingdomMap.jsx';
+import QuestionRenderer from '../quiz/QuestionRenderer.jsx';
+import BossBattleModal from '../quiz/BossBattleModal.jsx';
 import FeedbackOverlay from '../shared/FeedbackOverlay.jsx';
 import { useAudio } from '../../hooks/useAudio.js';
-import { feedbackNarration } from '../../utils/narration.js';
+import { DISTRICTS } from '../../data/questionBank.js';
+import {
+  playQuestionNarration,
+  playCorrectNarration,
+  playWrongNarration,
+  playHint1Narration,
+  playHint2Narration,
+  districtCompleteNarration,
+} from '../../utils/narration.js';
 
-/* helper: generate 4 MCQ options */
-function makeOptions(answer) {
-  const set = new Set([answer]);
-  let attempts = 0;
-  while (set.size < 4 && attempts < 40) {
-    attempts++;
-    const delta = Math.floor(Math.random() * 14) - 7;
-    const v = answer + delta;
-    if (v > 0 && v !== answer) set.add(v);
-  }
-  return shuffle([...set]);
-}
+export default function PlayPhase({ state, dispatch }) {
+  const { narrate, stopAll, sounds } = useAudio(state?.audioEnabled ?? true);
+  const [showMap, setShowMap]       = useState(state?.currentQuestion === 0);
+  const [hintsShown, setHintsShown] = useState(0);
+  const [showHint, setShowHint]     = useState(false);
+  const [showBoss, setShowBoss]     = useState(false);
+  const feedbackTimer               = useRef(null);
 
-/* ── World selector ─────────────────────────────────────────────── */
-function WorldSelector({ worldProgress, onSelectWorld }) {
-  return (
-    <div className="world-selector">
-      <div className="world-selector-header">
-        <h2 className="world-selector-title">🌍 Choose Your World</h2>
-        <p className="world-selector-subtitle">Pick a world to start, then earn stars as you play.</p>
-      </div>
-      <div className="worlds-grid">
-        {worlds.map((w, i) => {
-          const prog = worldProgress[i];
-          const isLocked = !prog.unlocked;
-          const isDone   = prog.completed;
-          return (
-            <button
-              type="button"
-              key={w.id}
-              className={`world-card ${isLocked ? 'locked' : ''} ${isDone ? 'completed' : ''}`}
-              onClick={() => !isLocked && onSelectWorld(w.id)}
-              aria-label={`${w.name}${isLocked ? ' locked' : ''}`}
-            >
-              <span className="world-card-icon">{isLocked ? '🔒' : w.icon}</span>
-              <div className="world-card-name">{w.name}</div>
-              <div className="world-card-info">{w.description}</div>
-              <div className={`world-card-pill ${isLocked ? 'locked' : isDone ? 'done' : 'ready'}`}>
-                {isLocked ? 'Locked' : isDone ? 'Done' : 'Ready'}
-              </div>
-              {isDone && (
-                <div className="world-stars">
-                  {Array.from({ length: 3 }).map((_, si) => (
-                    <span key={si} className="world-star">
-                      {si < prog.stars ? '⭐' : '☆'}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+  const qs = state?.questionSet || [];
+  const qIdx = state?.currentQuestion || 0;
+  const question = qs[qIdx];
+  const distIdx = state?.currentDistrict || 0;
+  const district = DISTRICTS[distIdx] || DISTRICTS[0];
+  const qInDistrict = qIdx % 10;
+  const isPlayDone = state?.phaseComplete?.play;
 
-/* ── World complete screen ──────────────────────────────────────── */
-function WorldCompleteScreen({ result, onBackToMap, onNextWorld, hasNext }) {
-  const { correct, total, stars } = result;
-  return (
-    <div className="world-complete">
-      <div className="world-complete-emoji">
-        {stars === 3 ? '🏆' : stars === 2 ? '🌟' : stars === 1 ? '⭐' : '💪'}
-      </div>
-      <h2 className="world-complete-title">World Complete!</h2>
-      <p className="world-complete-score">
-        You got {correct} out of {total} correct!
-      </p>
-      <div className="world-complete-stars">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <span key={i}>{i < stars ? '⭐' : '☆'}</span>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button className="world-complete-btn" style={{
-          background: 'var(--bg-card)', border: '1px solid var(--border-light)', fontSize: 14
-        }} onClick={onBackToMap}>
-          ← World Map
-        </button>
-        {hasNext && (
-          <button className="world-complete-btn" onClick={onNextWorld}>
-            Next World →
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ── Main PlayPhase ─────────────────────────────────────────────── */
-export default function PlayPhase({ state, dispatch, onFinish }) {
-  const {
-    activeWorld, currentQuestions, currentQuestion,
-    answeredQuestions, lives, streak, xp,
-    feedbackVisible, feedbackCorrect, feedbackExplanation, xpGained,
-    showWorldComplete, lastWorldResult, worldProgress,
-  } = state;
-
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [hintVisible, setHintVisible]       = useState(false);
-  const [options, setOptions]               = useState([]);
-
-  // play() from the global singleton — stops any concurrent audio automatically
-  const { play, stop } = useAudio(state.audioEnabled);
-  const lastQuestionKey = useRef('');
-
-  const q    = currentQuestions[currentQuestion];
-  const qKey = activeWorld + '-' + currentQuestion;
-
-  if (q && options.length === 0) {
-    setOptions(makeOptions(q.answer));
-  }
-
-  function startWorld(worldId) {
-    const questions = getWorldQuestions(worldId);
-    stop();
-    lastQuestionKey.current = `${worldId}-0-${questions[0]?.text ?? ''}`;
-    play(questions[0]?.text);
-    dispatch({ type: 'START_WORLD', worldId, questions });
-    setSelectedOption(null);
-    setHintVisible(false);
-    setOptions([]);
-  }
-
-  function handleOption(opt) {
-    if (feedbackVisible || selectedOption !== null) return;
-    setSelectedOption(opt);
-    const correct = opt === q.answer;
-    dispatch({ type: 'ANSWER_QUESTION', correct, explanation: q.explanation });
-    // play() stops the question narration then plays the feedback clip
-    const narration = feedbackNarration(correct);
-    if (narration[0]) play(narration[0].text);
-  }
-
-  // Narrate new questions as they appear
+  // Narrate question when question changes
   useEffect(() => {
-    if (!q?.text) return;
-    const key = `${activeWorld}-${currentQuestion}-${q.text}`;
-    if (lastQuestionKey.current === key) return;
-    lastQuestionKey.current = key;
-    play(q.text);
-  }, [activeWorld, currentQuestion, q?.text, play]);
+    if (!showMap && !showBoss && question && !state?.showFeedback) {
+      const timer = setTimeout(() => {
+        narrate(playQuestionNarration(question.questionText));
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [qIdx, showMap, showBoss, narrate, question, state?.showFeedback]);
 
-  const handleContinue = useCallback(() => {
-    setSelectedOption(null);
-    setHintVisible(false);
-    setOptions([]);
-    dispatch({ type: 'DISMISS_FEEDBACK' });
-  }, [dispatch]);
+  // Auto-dismiss popup after 2.2s
+  useEffect(() => {
+    if (state?.showFeedback) {
+      feedbackTimer.current = setTimeout(() => {
+        if (state?.showFeedback === 'correct') {
+          dispatch({ type: 'CLEAR_FEEDBACK' });
+          advanceQuestion();
+        } else {
+          handleAfterWrong();
+        }
+      }, 2200);
+    }
+    return () => {
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    };
+  }, [state?.showFeedback]);
 
-  function handleHint() {
+  useEffect(() => {
+    return () => {
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+      stopAll();
+    };
+  }, [stopAll]);
+
+  function handleAnswer(answer) {
+    stopAll();
+    const isCorrect = String(answer).trim() === String(question.correctAnswer).trim();
+
+    if (isCorrect) {
+      sounds.correct();
+      dispatch({ type: 'ANSWER_CORRECT' });
+      narrate(playCorrectNarration((state?.streak || 0) + 1));
+    } else {
+      sounds.wrong();
+      dispatch({ type: 'ANSWER_INCORRECT', payload: question.explanation });
+      narrate(playWrongNarration());
+      setHintsShown(0);
+    }
+  }
+
+  function advanceQuestion() {
+    setHintsShown(0);
+    setShowHint(false);
+    const nextIdx = qIdx + 1;
+
+    if (nextIdx % 10 === 0 && nextIdx <= 100) {
+      sounds.levelUp();
+      narrate(districtCompleteNarration());
+      dispatch({ type: 'NEXT_QUESTION' });
+      setShowMap(true);
+    } else {
+      dispatch({ type: 'NEXT_QUESTION' });
+    }
+  }
+
+  function handleShowHint() {
+    stopAll();
     dispatch({ type: 'USE_HINT' });
-    setHintVisible(true);
+    if (hintsShown === 0) {
+      setShowHint(1);
+      setHintsShown(1);
+      narrate(playHint1Narration());
+    } else {
+      setShowHint(2);
+      setHintsShown(2);
+      narrate(playHint2Narration());
+    }
   }
 
-  function handleNextWorld() {
-    const nextId = (lastWorldResult?.worldId ?? 0) + 1;
-    if (nextId <= worlds.length) startWorld(nextId);
-    else onFinish();
+  function handleAfterWrong() {
+    dispatch({ type: 'CLEAR_FEEDBACK' });
+    advanceQuestion();
   }
 
-  function handleGoReflect() {
-    dispatch({ type: 'ADVANCE_PHASE' });
-    onFinish();
+  function handlePrevQuestion() {
+    stopAll();
+    dispatch({ type: 'CLEAR_FEEDBACK' });
+    dispatch({ type: 'PREV_QUESTION' });
   }
 
-  const allWorldsDone = worldProgress.every(w => w.completed);
+  function handleNextQuestion() {
+    stopAll();
+    dispatch({ type: 'CLEAR_FEEDBACK' });
+    advanceQuestion();
+  }
 
-  /* ── World selector ─────── */
-  if (!activeWorld && !showWorldComplete) {
+  function startDistrict(idx) {
+    setShowMap(false);
+    setTimeout(() => narrate(playQuestionNarration(qs[idx * 10]?.questionText || '')), 400);
+  }
+
+  // Play done screen
+  if (isPlayDone || (qIdx >= 100 && !showMap)) {
+    const totalCorrect = state?.districtCorrect?.reduce((s, c) => s + (c || 0), 0) || 0;
     return (
-      <div className="play-phase">
-        <WorldSelector worldProgress={worldProgress} onSelectWorld={startWorld} />
-        {allWorldsDone && (
-          <button className="world-complete-btn" onClick={handleGoReflect}>
-            ✨ View My Journey →
+      <div className="play-done-wrap">
+        <div className="play-done-card glass-card anim-bounce-in">
+          <div className="play-done-icon">🏆</div>
+          <h2 className="play-done-title headline">Practice Phase Complete!</h2>
+          <div className="play-done-stats">
+            <div className="stat-pill"><span>✅</span><span>{totalCorrect}/100 Correct</span></div>
+            <div className="stat-pill"><span>⭐</span><span>{state?.xp || 0} XP Earned</span></div>
+            <div className="stat-pill"><span>🔥</span><span>Best Streak: {state?.maxStreak || 0}</span></div>
+          </div>
+          <button className="btn btn-primary play-done-cta" onClick={() => dispatch({ type: 'SET_PHASE', payload: 'reflect' })}>
+            🌟 Go to Reflect Phase
           </button>
-        )}
+        </div>
       </div>
     );
   }
 
-  /* ── World complete ─────── */
-  if (showWorldComplete && lastWorldResult) {
-    const hasNext = lastWorldResult.worldId < worlds.length;
+  // District Map Screen
+  if (showMap) {
+    const isAllDone = qIdx >= 100;
     return (
-      <div className="play-phase">
-        <WorldCompleteScreen
-          result={lastWorldResult}
-          onBackToMap={() => dispatch({ type: 'EXIT_WORLD' })}
-          onNextWorld={handleNextWorld}
-          hasNext={hasNext}
-        />
-        {!hasNext && (
-          <button className="world-complete-btn" style={{ marginTop: 8 }} onClick={handleGoReflect}>
-            ✨ See My Results →
-          </button>
+      <div className="play-map-wrap">
+        <div className="play-map-card glass-card">
+          <h2 className="play-map-title subheadline">🗺️ Addition Worlds Kingdom</h2>
+          <p className="body-text" style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+            {isAllDone ? (
+              <strong style={{ color: 'var(--gold)' }}>All 10 Addition Worlds Complete!</strong>
+            ) : (
+              <>World {distIdx + 1}: <strong style={{ color: 'var(--gold)' }}>{district.name}</strong></>
+            )}
+          </p>
+
+          <KingdomMap
+            districtScores={state?.districtScores || []}
+            districtCorrect={state?.districtCorrect || []}
+            currentDistrict={isAllDone ? 10 : distIdx}
+            onSelectDistrict={(d) => {
+              if (d <= distIdx) {
+                setShowMap(false);
+              }
+            }}
+          />
+
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '10px' }}>
+            {!isAllDone ? (
+              <>
+                <button className="btn btn-primary" onClick={() => startDistrict(distIdx)}>
+                  🚀 Enter {district.name}!
+                </button>
+                <button className="btn btn-outline" onClick={() => setShowBoss(true)} style={{ borderColor: '#feca57', color: '#feca57' }}>
+                  👑 Challenge Boss ({district.boss.name})
+                </button>
+                <button className="btn btn-outline" onClick={() => dispatch({ type: 'SET_PHASE', payload: 'reflect' })}>
+                  📓 Jump to Reflect
+                </button>
+              </>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setShowMap(false)}>
+                📊 View Results
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Boss Battle Modal from map */}
+        {showBoss && (
+          <BossBattleModal
+            boss={district.boss}
+            questions={qs.slice(distIdx * 10, distIdx * 10 + 5)}
+            onWin={() => {
+              setShowBoss(false);
+              dispatch({ type: 'UNLOCK_BADGE', payload: 'boss_slayer' });
+            }}
+            onClose={() => setShowBoss(false)}
+            audioEnabled={state?.audioEnabled}
+          />
         )}
       </div>
     );
   }
-
-  if (!q) return null;
-
-  const displayOptions = options.length > 0 ? options : makeOptions(q.answer);
-  const worldInfo = worlds.find(w => w.id === activeWorld);
-  const totalQ = currentQuestions.length;
-  const pct = Math.round(((currentQuestion) / totalQ) * 100);
 
   return (
-    <div className="play-phase">
-      {feedbackVisible && (
-        <FeedbackOverlay
-          correct={feedbackCorrect}
-          explanation={feedbackExplanation}
-          xpGained={xpGained}
-          onContinue={handleContinue}
+    <div className="play-wrap">
+      {/* Sleek Compact Top Bar: Topic Badge + HUD + Progress in one row */}
+      <div className="play-top-bar">
+        <div className="play-topic-compact">
+          <span className="topic-name">
+            <span className="topic-icon">{district.icon}</span> W{distIdx + 1}: {district.name}
+          </span>
+          <button
+            className="topic-mini-btn"
+            onClick={() => setShowBoss(true)}
+            title="Challenge World Boss"
+          >
+            👑 Boss
+          </button>
+          <button
+            className="topic-mini-btn"
+            onClick={() => setShowMap(true)}
+            title="View World Map"
+          >
+            🗺️ Map
+          </button>
+        </div>
+
+        <div className="play-hud-compact">
+          <span className="hud-pill-mini">⭐ {state?.xp || 0}</span>
+          <span className="hud-pill-mini">🔥 {state?.streak || 0}x</span>
+          <span className="hud-pill-mini q-num">Q {qInDistrict + 1}/10</span>
+        </div>
+      </div>
+
+      {/* Question Progress Mini Line */}
+      <div className="play-progress-line">
+        <div className="play-progress-fill" style={{ width: `${((qInDistrict + 1) / 10) * 100}%` }} />
+      </div>
+
+      {/* Question Renderer */}
+      {question && (
+        <div className="play-question-area">
+          <QuestionRenderer
+            question={question}
+            onAnswer={handleAnswer}
+            hintsShown={hintsShown}
+            showHint={showHint}
+            onHint={handleShowHint}
+            isLocked={state?.showFeedback === 'correct'}
+            onPrev={handlePrevQuestion}
+            onNext={handleNextQuestion}
+            canPrev={qInDistrict > 0}
+          />
+        </div>
+      )}
+
+      {/* Boss Battle Modal */}
+      {showBoss && (
+        <BossBattleModal
+          boss={district.boss}
+          questions={qs.slice(distIdx * 10, distIdx * 10 + 5)}
+          onWin={() => {
+            setShowBoss(false);
+            dispatch({ type: 'UNLOCK_BADGE', payload: 'boss_slayer' });
+          }}
+          onClose={() => setShowBoss(false)}
+          audioEnabled={state?.audioEnabled}
         />
       )}
 
-      <div className="world-name-badge">
-        {worldInfo?.icon} {worldInfo?.name}
-      </div>
-
-      <div className="quiz-hud">
-        <div className="hud-xp">⭐ {xp}</div>
-        <div className="hud-lives">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <span key={i} className="hud-heart">
-              {i < lives ? '❤️' : '🤍'}
-            </span>
-          ))}
-        </div>
-        <div className="hud-streak">🔥 {streak}x</div>
-      </div>
-
-      <div className="quiz-progress-wrap">
-        <div className="quiz-progress-header">
-          <span>Question {currentQuestion + 1}/{totalQ}</span>
-          <span>{pct}%</span>
-        </div>
-        <div className="progress-bar-wrap">
-          <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-
-      <div className="question-card">
-        <div className="question-card-badge">
-          {worldInfo?.icon} Question {currentQuestion + 1} of {totalQ}
-        </div>
-        <p className="question-text">{q.text}</p>
-        <div className="options-grid">
-          {displayOptions.map((opt, i) => {
-            let cls = 'option-btn';
-            if (selectedOption !== null) {
-              if (opt === q.answer) cls += ' correct';
-              else if (opt === selectedOption) cls += ' wrong';
-            }
-            return (
-              <button key={i} className={cls}
-                onClick={() => handleOption(opt)}
-                disabled={selectedOption !== null}>
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-
-        {!hintVisible && selectedOption === null && (
-          <button className="quiz-hint-btn" onClick={handleHint}>
-            💡 Show Hint
-          </button>
-        )}
-
-        {hintVisible && (
-          <div className="quiz-hint-box">
-            💡 <strong>Hint:</strong> {q.hint}
-          </div>
-        )}
-      </div>
+      {/* Feedback Overlay */}
+      {state?.showFeedback && (
+        <FeedbackOverlay
+          isCorrect={state?.showFeedback === 'correct'}
+          explanation={question?.explanation}
+          onContinue={state?.showFeedback === 'correct' ? () => { dispatch({ type: 'CLEAR_FEEDBACK' }); advanceQuestion(); } : handleAfterWrong}
+        />
+      )}
     </div>
   );
 }

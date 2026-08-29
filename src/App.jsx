@@ -1,181 +1,244 @@
-import { useGameState, PHASES } from './hooks/useGameState.js';
-import { useAudio } from './hooks/useAudio.js';
-import IntroScreen   from './components/IntroScreen.jsx';
-import WonderPhase   from './components/phases/WonderPhase.jsx';
-import StoryPhase    from './components/phases/StoryPhase.jsx';
-import SimulatePhase from './components/phases/SimulatePhase.jsx';
-import PlayPhase     from './components/phases/PlayPhase.jsx';
-import ReflectPhase  from './components/phases/ReflectPhase.jsx';
-import {
-  wonderNarration,
-  reflectNarration,
-} from './utils/narration.js';
+// src/App.jsx
+import React, { useReducer, useEffect, useCallback } from 'react';
+import './App.css';
+import IntroScreen      from './components/IntroScreen.jsx';
+import ProgressMap      from './components/ProgressMap.jsx';
+import FloatingNumbers  from './components/shared/FloatingNumbers.jsx';
+import WonderPhase      from './components/phases/WonderPhase.jsx';
+import StoryPhase       from './components/phases/StoryPhase.jsx';
+import SimulatePhase    from './components/phases/SimulatePhase.jsx';
+import PlayPhase        from './components/phases/PlayPhase.jsx';
+import ReflectPhase     from './components/phases/ReflectPhase.jsx';
+import { generateSessionQuestions } from './utils/shuffle.js';
+import { checkBadges }  from './utils/badgeEngine.js';
+import { calcXP, calcStars } from './utils/scoring.js';
+import questionBank     from './data/questionBank.js';
 
-const PHASE_DEFS = [
-  { label: 'Wonder',   icon: '❓' },
-  { label: 'Story',    icon: '📖' },
-  { label: 'Simulate', icon: '🎮' },
-  { label: 'Play',     icon: '🕹️' },
-  { label: 'Reflect',  icon: '⭐' },
-];
+const initialState = {
+  phase: 'intro',
+  storyPanel: 0,
+  currentSimStation: 0,
+  simStationsComplete: [false, false, false, false],
+  questionSet: [],
+  currentQuestion: 0,
+  currentDistrict: 0,
+  districtScores: Array(10).fill(null),
+  districtCorrect: Array(10).fill(0),
+  hintsUsed: 0,
+  attemptCount: 0,
+  xp: 0,
+  totalStars: 0,
+  streak: 0,
+  maxStreak: 0,
+  badges: [],
+  phaseComplete: { wonder: false, story: false, simulate: false, play: false, reflect: false },
+  audioEnabled: true,
+  showFeedback: null, // null | 'correct' | 'incorrect'
+  feedbackMsg: '',
+};
 
-function PhaseNav({ phase, completedPhases, audioEnabled, dispatch }) {
-  if (phase === PHASES.INTRO) return null;
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET_PHASE':
+      return { ...state, phase: action.payload };
 
-  const phaseIndex = phase - 1;
+    case 'NEXT_STORY_PANEL':
+      if (state.storyPanel >= 3) {
+        return {
+          ...state,
+          phase: 'simulate',
+          phaseComplete: { ...state.phaseComplete, story: true },
+        };
+      }
+      return { ...state, storyPanel: state.storyPanel + 1 };
 
-  function handlePhaseSelect(phaseId, isLocked) {
-    if (isLocked) return;
-    dispatch({ type: 'SET_PHASE', payload: phaseId });
+    case 'PREV_STORY_PANEL':
+      if (state.storyPanel === 0) return state;
+      return { ...state, storyPanel: state.storyPanel - 1 };
+
+    case 'ADVANCE_SIM_STATION':
+      return { ...state, currentSimStation: Math.min(state.currentSimStation + 1, 3) };
+
+    case 'PREV_SIM_STATION':
+      return { ...state, currentSimStation: Math.max(state.currentSimStation - 1, 0) };
+
+    case 'COMPLETE_SIM_STATION': {
+      const sc = [...state.simStationsComplete];
+      sc[action.payload] = true;
+      const allDone = sc.every(Boolean);
+      return {
+        ...state,
+        simStationsComplete: sc,
+        ...(allDone ? { phaseComplete: { ...state.phaseComplete, simulate: true } } : {}),
+      };
+    }
+
+    case 'LOAD_QUESTIONS':
+      return {
+        ...state,
+        questionSet: action.payload,
+        currentQuestion: 0,
+        currentDistrict: 0,
+        districtCorrect: Array(10).fill(0),
+        districtScores: Array(10).fill(null),
+        streak: 0,
+      };
+
+    case 'ANSWER_CORRECT': {
+      const newStreak = state.streak + 1;
+      const maxStreak = Math.max(state.maxStreak, newStreak);
+      const xpGained = calcXP(state.attemptCount + 1, state.hintsUsed, newStreak);
+      const newXP = state.xp + xpGained;
+      const districtCorrect = [...state.districtCorrect];
+      districtCorrect[state.currentDistrict] = (districtCorrect[state.currentDistrict] || 0) + 1;
+      return {
+        ...state,
+        xp: newXP,
+        streak: newStreak,
+        maxStreak,
+        districtCorrect,
+        hintsUsed: 0,
+        attemptCount: 0,
+        showFeedback: 'correct',
+      };
+    }
+
+    case 'ANSWER_INCORRECT':
+      return {
+        ...state,
+        streak: 0,
+        attemptCount: state.attemptCount + 1,
+        showFeedback: 'incorrect',
+        feedbackMsg: action.payload || '',
+      };
+
+    case 'USE_HINT':
+      return { ...state, hintsUsed: state.hintsUsed + 1 };
+
+    case 'CLEAR_FEEDBACK':
+      return { ...state, showFeedback: null, feedbackMsg: '' };
+
+    case 'PREV_QUESTION':
+      if (state.currentQuestion > 0 && state.currentQuestion % 10 !== 0) {
+        return {
+          ...state,
+          currentQuestion: state.currentQuestion - 1,
+          showFeedback: null,
+          feedbackMsg: '',
+          hintsUsed: 0,
+          attemptCount: 0,
+        };
+      }
+      return state;
+
+    case 'NEXT_QUESTION': {
+      const nextQ = state.currentQuestion + 1;
+      const distIdx = Math.floor(nextQ / 10);
+      const isNewDistrict = nextQ % 10 === 0 && nextQ < 100;
+      const districtScores = [...state.districtScores];
+
+      if (isNewDistrict || nextQ >= 100) {
+        const justDone = state.currentDistrict;
+        districtScores[justDone] = state.districtCorrect[justDone] || 0;
+      }
+      const newDistrict = Math.min(distIdx, 9);
+
+      if (nextQ >= 100) {
+        const totalStars = districtScores.reduce((s, sc) => {
+          if (sc === null) return s;
+          return s + calcStars(sc);
+        }, 0);
+        return {
+          ...state,
+          currentQuestion: nextQ,
+          districtScores,
+          phaseComplete: { ...state.phaseComplete, play: true },
+          totalStars,
+        };
+      }
+
+      return {
+        ...state,
+        currentQuestion: nextQ,
+        currentDistrict: newDistrict,
+        districtScores,
+        attemptCount: 0,
+        hintsUsed: 0,
+      };
+    }
+
+    case 'UNLOCK_BADGE': {
+      if (state.badges.includes(action.payload)) return state;
+      return { ...state, badges: [...state.badges, action.payload] };
+    }
+
+    case 'COMPLETE_PHASE':
+      return { ...state, phaseComplete: { ...state.phaseComplete, [action.payload]: true } };
+
+    case 'TOGGLE_AUDIO':
+      return { ...state, audioEnabled: !state.audioEnabled };
+
+    case 'RESET_SESSION':
+      return {
+        ...initialState,
+        questionSet: generateSessionQuestions(questionBank),
+        audioEnabled: state.audioEnabled,
+      };
+
+    default:
+      return state;
   }
-
-  return (
-    <nav className="phase-nav">
-      <button className="nav-home-btn" onClick={() => dispatch({ type: 'SET_PHASE', payload: PHASES.INTRO })}>
-        🏠 Home
-      </button>
-
-      <div className="phase-track">
-        {PHASE_DEFS.map((p, i) => {
-          const phaseId = i + 1;
-          const isActive    = phaseIndex === i;
-          const isCompleted = completedPhases.includes(phaseId);
-          const isLocked    = !isActive && !isCompleted;
-
-          return (
-            <button
-              key={p.label}
-              type="button"
-              className="phase-step"
-              onClick={() => handlePhaseSelect(phaseId, isLocked)}
-              disabled={isLocked}
-              aria-label={`Go to ${p.label}`}
-              aria-current={isActive ? 'step' : undefined}
-              title={isLocked ? `${p.label} is locked` : `Go to ${p.label}`}
-            >
-              {i > 0 && (
-                <div className={`phase-connector ${
-                  completedPhases.includes(phaseId) || phaseIndex > i ? 'completed'
-                  : phaseIndex === i ? 'active' : ''
-                }`} />
-              )}
-              <div className="phase-circle">
-                <div className={`phase-badge ${isCompleted ? 'completed' : isActive ? 'active' : 'locked'}`}>
-                  {isCompleted ? '✓' : isActive ? <span style={{fontSize:11}}>{String(phaseId).padStart(2,'0')}</span> : p.icon}
-                </div>
-                <span className={`phase-label ${isCompleted ? 'completed' : isActive ? 'active' : ''}`}>
-                  {p.label}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <button className="nav-audio-btn"
-        onClick={() => dispatch({ type: 'TOGGLE_AUDIO' })}
-        title={audioEnabled ? 'Mute audio' : 'Unmute audio'}>
-        {audioEnabled ? '🔊' : '🔇'}
-      </button>
-
-      <button className="nav-close-btn"
-        onClick={() => dispatch({ type: 'RESET' })}
-        title="Restart">
-        ✕
-      </button>
-    </nav>
-  );
 }
 
 export default function App() {
-  const [state, dispatch] = useGameState();
-  // Single shared audio hook — stop() here stops audio everywhere
-  const { playQueue, stop } = useAudio(state.audioEnabled);
+  const [state, dispatch] = useReducer(reducer, initialState);
 
-  const { phase, completedPhases, storyPanel, station, completedStations, audioEnabled } = state;
+  // Initialize questions on session load
+  useEffect(() => {
+    dispatch({ type: 'LOAD_QUESTIONS', payload: generateSessionQuestions(questionBank) });
+  }, []);
 
-  function advanceTo(next) {
-    dispatch({ type: 'COMPLETE_PHASE', payload: phase });
-    dispatch({ type: 'SET_PHASE', payload: next });
-  }
+  // Check and unlock badges reactively
+  useEffect(() => {
+    const newBadges = checkBadges(state);
+    newBadges.forEach((id) => dispatch({ type: 'UNLOCK_BADGE', payload: id }));
+  }, [state.phaseComplete, state.simStationsComplete, state.districtScores, state.maxStreak, state.currentQuestion, state.districtCorrect]);
 
-  // INTRO → WONDER
-  // WonderPhase has no internal audio; App owns it.
-  function handleStart() {
-    stop(); // silence any lingering audio first
-    playQueue(wonderNarration());
-    dispatch({ type: 'SET_PHASE', payload: PHASES.WONDER });
-  }
-
-  // WONDER → STORY
-  // StoryPhase manages its own narration via useEffect — do NOT start
-  // narration here or the same audio will play twice simultaneously.
-  function handleWonderNext() {
-    stop(); // cancel wonder narration before Story mounts
-    advanceTo(PHASES.STORY);
-  }
-
-  // STORY → SIMULATE
-  // SimulatePhase manages its own narration via useEffect — same rule.
-  function handleStoryNext() {
-    stop(); // cancel story narration before Simulate mounts
-    advanceTo(PHASES.SIMULATE);
-  }
-
-  // SIMULATE → PLAY
-  function handleSimNext() {
-    stop();
-    advanceTo(PHASES.PLAY);
-  }
-
-  // PLAY → REFLECT
-  // ReflectPhase has no internal audio; App owns it.
-  function handleReflect() {
-    stop(); // cancel any Play audio before Reflect narration starts
-    advanceTo(PHASES.REFLECT);
-    playQueue(reflectNarration());
-  }
-
-  function handleRestart() { dispatch({ type: 'RESET' }); }
+  const goHome = useCallback(() => {
+    dispatch({ type: 'SET_PHASE', payload: 'intro' });
+  }, []);
 
   return (
-    <div className="app">
-      <PhaseNav
-        phase={phase}
-        completedPhases={completedPhases}
-        audioEnabled={audioEnabled}
-        dispatch={dispatch}
-      />
+    <div className="app-shell">
+      <FloatingNumbers />
 
-      {phase === PHASES.INTRO    && <IntroScreen onStart={handleStart} />}
-      {phase === PHASES.WONDER   && <WonderPhase onNext={handleWonderNext} />}
-      {phase === PHASES.STORY    && (
-        <StoryPhase
-          storyPanel={storyPanel}
-          audioEnabled={audioEnabled}
-          dispatch={dispatch}
-          onNext={handleStoryNext}
-        />
+      {state.phase !== 'intro' && (
+        <header className="app-header">
+          <button className="home-btn" onClick={goHome} aria-label="Home">
+            <span className="home-icon">🏠</span>
+            <span className="home-text">Home</span>
+          </button>
+
+          <div className="header-progress">
+            <ProgressMap
+              currentPhase={state.phase}
+              phaseComplete={state.phaseComplete}
+              audioEnabled={state.audioEnabled}
+              onToggleAudio={() => dispatch({ type: 'TOGGLE_AUDIO' })}
+              onSelectPhase={(pKey) => dispatch({ type: 'SET_PHASE', payload: pKey })}
+            />
+          </div>
+        </header>
       )}
-      {phase === PHASES.SIMULATE && (
-        <SimulatePhase
-          station={station}
-          completedStations={completedStations}
-          audioEnabled={audioEnabled}
-          dispatch={dispatch}
-          onNext={handleSimNext}
-        />
-      )}
-      {phase === PHASES.PLAY     && (
-        <PlayPhase
-          state={state}
-          dispatch={dispatch}
-          onFinish={handleReflect}
-        />
-      )}
-      {phase === PHASES.REFLECT  && (
-        <ReflectPhase state={state} onRestart={handleRestart} />
-      )}
+
+      <main className={`phase-content ${state.phase === 'intro' ? 'is-intro' : ''}`}>
+        {state.phase === 'intro'    && <IntroScreen   state={state} dispatch={dispatch} />}
+        {state.phase === 'wonder'   && <WonderPhase   state={state} dispatch={dispatch} />}
+        {state.phase === 'story'    && <StoryPhase    state={state} dispatch={dispatch} />}
+        {state.phase === 'simulate' && <SimulatePhase state={state} dispatch={dispatch} />}
+        {state.phase === 'play'     && <PlayPhase     state={state} dispatch={dispatch} />}
+        {state.phase === 'reflect'  && <ReflectPhase  state={state} dispatch={dispatch} />}
+      </main>
     </div>
   );
 }

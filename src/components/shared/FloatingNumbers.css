@@ -1,0 +1,30 @@
+/* src/components/shared/FloatingNumbers.css */
+.floating-numbers-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.floating-item {
+  position: absolute;
+  bottom: -40px;
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-weight: 800;
+  user-select: none;
+  animation: floatUpAnim infinite linear;
+}
+
+@keyframes floatUpAnim {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-50vh) rotate(180deg);
+  }
+  100% {
+    transform: translateY(-110vh) rotate(360deg);
+  }
+}
